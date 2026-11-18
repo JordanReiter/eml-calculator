@@ -1,0 +1,6 @@
+# Literal link titles and URLs only (FR-017, FR-018).
+paper_title = "the paper"
+paper_url = "https://arxiv.org/abs/2603.21852"
+
+video_title = "the video"
+video_url = "https://www.youtube.com/watch?v=LxVW3b8jVdE"
