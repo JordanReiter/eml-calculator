@@ -19,8 +19,10 @@
 - Q: When should a complex node value be displayed as a real number instead of keeping its imaginary part? (FR-014) → A: Display as real when `|imag| <= max(1e-12, ε × max(1, |real|))`, with the absolute floor and `ε` defined once as shared constants.
 
 ### Session 2026-11-17 (artifact corrections)
-- Q: Should the link titles be configurable with the URLs in `config.toml`? (FR-017, FR-018) → A: Yes. Both anchors' titles and URLs are literals in config, read at generation time. The citation text and explanation remain fixed in source.
 - Q: Should a negative right child of `eml` be a domain failure under complex evaluation? (FR-011, FR-012) → A: No. `cmath.log` is defined for negative arguments; only a zero right child is an `undefined` failure. `non-positive operand` is removed from the reason vocabulary.
+
+### Session 2026-11-19 (post-implementation, US4)
+- Q: How should the page-top citation, explanation, and link content be supplied for US4? (FR-017, FR-018) → A: Supersedes Session 2026-11-17 (artifact corrections): remove the separate fixed citation paragraph entirely. Add a source-controlled root file `top_fragment.html`, supplied by the project owner, which owns the page H1, summary paragraph, "References" heading, and the Article/Video label markup. The article link text comes from the existing config key `paper_title` as a plain string (it may include the author's name and MUST NOT be wrapped in `<em>` or other styling by the renderer). Keep the existing config keys unchanged: `paper_title`, `paper_url`, `video_title`, `video_url`. Preserve the existing rules: no JavaScript, no network, no recomputation in the browser, no anchors other than the article and optional video anchors, and byte-identical output for the same inputs. A missing or unreadable `top_fragment.html` is a user-facing generation error.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -79,14 +81,14 @@ As a reviewer, I can reach the paper and the video from the page itself, so I ca
 
 **Why this priority**: The page will be opened by someone who has not read the brief. Without the source and a sentence of framing, the tree is an unexplained diagram.
 
-**Independent Test**: Generate the page and confirm the citation, the paper anchor, the video anchor, and the explanation all appear above the tree, with the hrefs and link text specified in config.
+**Independent Test**: Generate the page and confirm the `top_fragment.html`-supplied page H1, summary paragraph, "References" heading, and Article/Video label markup appear above the tree, the article and optional video anchors are the only anchors with hrefs and link texts from config, and a missing or unreadable `top_fragment.html` produces a user-facing generation error.
 
 **Acceptance Scenarios**:
 
-1. **Given** a generated page, **When** it is opened, **Then** the citation appears above the tree, worded as specified.
-2. **Given** a generated page, **When** it is opened, **Then** an anchor with the configured paper title points to the configured paper URL and, when a video URL is configured, an anchor with the configured video title points to it.
-3. **Given** a generated page, **When** it is opened, **Then** two or three sentences below the citation explain what the tree is and that hovering a node shows its value.
-4. **Given** no video URL is configured, **When** the page is generated, **Then** the video anchor is absent and no placeholder text is visible.
+1. **Given** a valid `top_fragment.html`, **When** the page is generated and opened, **Then** the page-top content from `top_fragment.html` appears above the tree, including the H1, summary paragraph, and "References" heading as supplied in that fragment.
+2. **Given** a generated page, **When** it is opened, **Then** every anchor is the one supplied by `top_fragment.html`, with its `href` and link text substituted from the corresponding config value (`paper_title`/`paper_url`, `video_title`/`video_url`); an absent config value substitutes as an empty string, and the renderer adds no anchor, omission logic, or styling of its own.
+3. **Given** a generated page, **When** it is opened, **Then** the summary and label markup supplied by `top_fragment.html` explain what the tree is and indicate that hovering a node shows its value.
+4. **Given** config values absent for the video keys, **When** the page is generated, **Then** those values substitute as empty strings, no generation error is raised, no placeholder tokens remain, and the rendered rows are exactly those supplied by `top_fragment.html`.
 
 ---
 
@@ -102,6 +104,7 @@ As a reviewer, I can reach the paper and the video from the page itself, so I ca
 - Expressions outside the supported operator/function set are rejected with a clear, user-facing error that identifies the unsupported element.
 - An unknown named constant (for example `tau` or `phi`) is rejected with a clear, user-facing error that names the constant, rather than failing as a parse error or being treated as an implicit variable.
 - A free variable (for example `x`) is rejected with a clear, user-facing error; it is not assigned a sample value or treated as an implicit constant.
+- A missing or unreadable `top_fragment.html` or configuration file is reported as a user-facing generation error.
 - Very large generated trees remain structurally inspectable in both text and rendered forms; node-level failure reporting remains specific even when evaluation cannot complete normally.
 
 ## Requirements *(mandatory)*
@@ -111,7 +114,7 @@ As a reviewer, I can reach the paper and the video from the page itself, so I ca
 - **FR-001**: The system MUST accept a single arithmetic expression as a command-line argument and parse it into an internal expression structure. No other input mechanism exists: the rendered page contains no input element.
 - **FR-002**: The parser MUST support numeric literals, parentheses, unary minus, binary operators `+`, `-`, `*`, `/`, `^`, the functions `exp`, `ln`, `sqrt`, `sin`, `cos`, and `tan`, and the named constants `pi` and `e`. Named constants are input-only: in the output form they MUST be expanded into `1` leaves like every other value. Numeric literals MUST be decimal integers or decimals with an optional exponent (for example `2`, `2.5`, `.5`, `1e-3`); hexadecimal, binary, and underscore-separated forms are rejected. The input grammar is closed: free variables (for example `x`) and any other identifiers MUST be rejected with a clear, user-facing error.
 - **FR-003**: The system MUST rewrite supported parsed expressions into equivalent expressions whose only operator is `eml` and whose only constant leaf is `1`.
-- **FR-004**: The rewrite MUST use the constructions tabulated in the Supplementary Information of Andrzej Odrzywołek, *All elementary functions from a single binary operator* (arXiv:2603.21852v2, submitted 23 Mar 2026, revised 4 Apr 2026) as the authoritative source for directly tabulated forms.
+- **FR-004**: The rewrite MUST use the constructions in the root `constructions.py` table, ported from the paper author's EML compiler (`EML_toolkit/EmL_compiler` in `VA00/SymbolicRegressionPackage`). That table is the authoritative implementation of the constructions tabulated in the Supplementary Information of Andrzej Odrzywołek, *All elementary functions from a single binary operator* (arXiv:2603.21852v2, submitted 23 Mar 2026, revised 4 Apr 2026); the SI is the source it reflects and its verification standard. Where table and paper disagree, the paper wins and the table is corrected with a note in `decisions.md`.
 - **FR-005**: The system MUST obtain constructions not tabulated directly by composing tabulated constructions, preserving equivalence to the source expression.
 - **FR-006**: The system MUST emit the rewritten expression as indented text with one node per line, where `eml(` opens a node, its two children are indented beneath it, `)` closes it, and each leaf is `1`.
 - **FR-007**: The system MUST render the same rewritten expression in a browser as a tree with one node per `eml` and one leaf per `1`.
@@ -122,13 +125,13 @@ As a reviewer, I can reach the paper and the video from the page itself, so I ca
 - **FR-012**: When one or more node-level evaluation or domain problems occur, the system MUST visibly mark every failing node in the rendered tree with its reason from `overflow` or `undefined`, expose the same reason on hover or focus, and list every failing node and its reason in a summary. An ancestor of a failed node MUST be marked failed with reason `undefined` unless it has its own more specific failure reason.
 - **FR-013**: The system MUST not crash and MUST not silently present `nan` or `inf` for any supported error case; failures must be explicit and attributable.
 - **FR-014**: The system MUST evaluate expressions over complex numbers and display a value as real when `|imag| <= max(IMAG_ABS_FLOOR, ε × max(1, |real|))`, where `IMAG_ABS_FLOOR` and `ε` are shared constants; values with a meaningful imaginary part MUST remain representable in complex form.
-- **FR-015**: The delivered user experience MUST be limited to one tree result view with node hover/focus value inspection. The page contains no input element, no form, no navigation, and no UI framework; the expression is supplied before the page is rendered.
+- **FR-015**: The delivered user experience MUST be limited to one tree result view with node hover/focus value inspection. The page contains no input element, no form, no navigation, and no UI framework; the expression is supplied before the page is rendered. This instruction governs only the implementation decisions. It is not necessary to implement or test safeguards against these elements.
 - **FR-016**: The system MUST produce *a* valid equivalent tree for each supported expression; it MUST NOT attempt to minimize tree size or select a smallest representation.
-- **FR-017**: Above the tree, the page MUST contain, in order: the citation text "Odrzywołek, *All elementary functions from a single binary operator*, arXiv:2603.21852v2"; an anchor whose href is the configured paper URL and whose link text is the configured paper title; an anchor whose href is the configured video URL and whose link text is the configured video title, only when a video URL is configured; and two to three sentences explaining what the tree is and that hovering a node shows its value. The page MUST contain no other anchors.
-- **FR-018**: The URLs and link titles required by FR-017 MUST be literals in a source-controlled configuration file read at generation time. They MUST NOT be constructed at runtime or fetched over the network. If the configuration file omits the video URL, the video anchor and its title MUST be omitted entirely rather than rendered with a placeholder or an empty href.
-- **FR-019**: Below the citation block and above the tree, the page MUST display the source expression exactly as supplied and its evaluated value. If the source expression cannot be evaluated, the failure summary required by FR-012 MUST appear in place of the value. Neither is recomputed in the browser.
+- **FR-017**: Above the tree, the page MUST render the literal content provided by a source-controlled root file `top_fragment.html`, supplied by the project owner. `top_fragment.html` owns the page H1, summary paragraph, "References" heading, and the Article/Video label markup, including any anchors. The renderer MUST substitute exactly four tokens — `{{paper_title}}` (article link text), `{{paper_url}}` (article href), `{{video_title}}` (video link text), `{{video_url}}` (video href) — with HTML-escaped values using literal string replacement (not str.format, so literal braces in the fragment are preserved). All four tokens MUST always be substituted, each with its config value or "" when that key is absent; all other fragment bytes MUST remain unchanged. The renderer MUST NOT add anchors, conditionally omit rows, add styling (in particular no `<em>` around paper_title), or paraphrase. The separate fixed citation paragraph is removed. The page MUST contain no anchors other than those present in `top_fragment.html`.
+- **FR-018**: The existing config keys MUST remain unchanged: `paper_title`, `paper_url`, `video_title`, `video_url`. Their values are literals in a source-controlled configuration file read at generation time and MUST NOT be constructed at runtime or fetched over the network. `top_fragment.html` is a source-controlled root file read at generation time. The optional video values (`video_title`, `video_url`) MAY be absent; when absent they substitute into the fragment as empty strings without a generation error and without renderer-side omission logic. A missing or unreadable `top_fragment.html` or configuration file is a user-facing generation error. All four token replacements are always defined: paper_title and paper_url from config, and video_title and video_url from config or "".
+- **FR-019**: Below the page-top content supplied by `top_fragment.html` and above the tree, the page MUST display the source expression exactly as supplied and its evaluated value. If the source expression cannot be evaluated, the failure summary required by FR-012 MUST appear in place of the value. Neither is recomputed in the browser.
 - **FR-020**: The rendered page MUST contain exactly one element per node of the generated tree, including nodes inside collapsed sections. Depth is a presentation concern only: no node may be omitted, truncated, or summarized away.
-- **FR-021**: Exit status MUST be `0` when the root evaluates, `1` when a node-level failure prevents a root value while the tree was still generated and written, and `2` when the input cannot be parsed or uses an unsupported element.
+- **FR-021**: Exit status MUST be `0` when the root evaluates, `1` when a node-level failure prevents a root value while the tree was still generated and written, and `2` when the expression input cannot be parsed or uses an unsupported element, or when a required generation-time input (including `config.toml` or `top_fragment.html`) is missing, unreadable, or invalid. Absent optional video config values are not a generation error. No run exits `0` while reporting a failure or generation error.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -142,18 +145,20 @@ As a reviewer, I can reach the paper and the video from the page itself, so I ca
 ### Assumptions
 
 - The source paper’s Supplementary Information provides complete constructions needed for the supported operator/function set in this feature.
-- The command line accepts only closed expressions; free variables are out of scope. Internal equivalence checks of tabulated constructions use a shared, explicit sample range for the construction input variable and the relative tolerance `ε`.
+- The command line accepts only closed expressions; free variables are out of scope. Internal equivalence checks of tabulated constructions use a shared, explicit sample range for the construction input variable and the relative tolerance `ε` (currently set at 1e-9).
 - Operator precedence and associativity follow standard mathematical convention: `^` binds more tightly than unary minus and `*`/`/`, which bind more tightly than `+`/`-`; `^` is right-associative.
 - “Negligible imaginary part” means `|imag| <= max(IMAG_ABS_FLOOR, ε × max(1, |real|))`, where `IMAG_ABS_FLOOR` has the shared default `1e-12` and `ε` is the shared relative tolerance.
 - A supported expression that cannot be evaluated successfully is still translated when structurally possible, so the failure can be reported at the relevant node; if translation itself is impossible due to unsupported syntax, the user receives a clear input error.
 - The browser experience is intended for immediate inspection by a single user in one session, without saving, sharing, accounts, or export.
-- The citation text and explanation required by FR-017 are fixed text written once in the source; the two anchors' titles and URLs are literals in `config.toml`. Neither is generated per expression or paraphrased by the implementation.
-- The video title and URL in FR-018 are supplied by the project owner and configured in `config.toml`. If they are omitted, the anchor is omitted, which is a valid rendered state and not a defect.
+- The page-top H1, summary paragraph, "References" heading, and Article/Video label markup are supplied by the project owner in the source-controlled root file `top_fragment.html`. The existing config keys `paper_title`, `paper_url`, `video_title`, and `video_url` remain the source of anchor URLs and link-text strings; `paper_title` is a plain string and may include the author's name. Neither fragment content nor config literals are generated per expression, paraphrased by the implementation, or fetched at runtime.
+- The video title and URL in FR-018 are supplied by the project owner and configured in `config.toml`. If they are omitted, empty strings are substituted into the fragment and no error is raised; the resulting page is whatever the owner-authored fragment produces and is not a defect.
+- The owner-authored fragment uses exactly four lowercase double-brace tokens: `{{paper_title}}`, `{{paper_url}}`, `{{video_title}}`, `{{video_url}}`. Substitution is literal string replacement, so single braces — including inline CSS such as body { ... } — need no escaping. All four tokens are always replaced; absent video keys substitute "".
 
 ### Dependencies
 
 - Access to the constructions tabulated in the Supplementary Information of arXiv:2603.21852v2.
 - A fixed validation corpus of approximately 30 closed expressions with expected outcomes and tolerance `ε`, plus a shared sample range for internal construction-verification checks.
+- The source-controlled root file `top_fragment.html`, supplied by the project owner.
 
 ## Success Criteria *(mandatory)*
 
@@ -163,8 +168,8 @@ As a reviewer, I can reach the paper and the video from the page itself, so I ca
 - **SC-002**: The corpus includes, at minimum, division by zero, an `eml` node whose right child evaluates to zero, and a tree deep enough to overflow standard floating-point evaluation; each case produces a specific, non-crashing failure identified at the correct node. It also includes a case exercising a negative right child (π via `ln(-1)`) as a successful complex evaluation.
 - **SC-003**: 100% of expressions in the validation corpus complete without silently producing `nan` or `inf`.
 - **SC-004**: For `1+1`, reviewers can confirm that the text tree and rendered tree contain the same nodes in the same structure, and the reported node count matches both representations.
-- **SC-005**: A first-time reviewer can enter one supported expression, see the translated tree, and inspect at least one node value within 10 seconds of landing on the experience.
+- **SC-005**: A first-time reviewer can supply one supported expression, see the translated tree, and inspect at least one node value.
 - **SC-006**: For each supported failure case in the corpus, users can identify every failing node and its reason from visible node markers and the failure summary on the page, without consulting logs or external diagnostics.
-- **SC-007**: The generated page contains exactly the anchors named in FR-017, each with the href and link text from the configuration, and no others. With no video URL configured, it contains only the paper anchor and shows no placeholder text.
+- **SC-007**: The generated page contains exactly the anchors supplied by `top_fragment.html`, each with its href and link text substituted from config as specified in FR-017, and no renderer-added anchors. All substitution tokens are replaced; no token placeholders remain in the output.
 - **SC-008**: For any supported expression, the page shows the expression as supplied and its value, and both match what the command line reported.
-- **SC-009**: Every run exits with the documented status for its outcome: `0` for a computed root value, `1` for a generated tree containing a node-level failure, `2` for rejected input. No run exits `0` while reporting a failure.
+- **SC-009**: Every run exits with the documented status for its outcome: `0` for a computed root value, `1` for a generated tree containing a node-level failure, `2` for rejected or invalid input or a user-facing generation error. No run exits `0` while reporting a failure or generation error.

@@ -1,9 +1,10 @@
-"""HTML-tree rendering tests (T019, T025, T029, T032, T033, T038)."""
+"""HTML-tree rendering tests (T019, T025, T029, T038, T040–T046)."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import replace
+from html import escape
 
 import pytest
 
@@ -17,6 +18,29 @@ CONFIG = {
     "video_title": "the video",
     "video_url": "https://www.youtube.com/watch?v=LxVW3b8jVdE",
 }
+
+# Synthetic owner-authored fragment: distinctive landmarks in the required
+# order, four lowercase double-brace tokens, and literal single-brace CSS.
+SAMPLE_FRAGMENT = """<h1 id="heading">Owner heading</h1>
+<p class="summary">Owner summary explaining the tree and hovering.</p>
+<style>body { margin: 0; }</style>
+<h2>References</h2>
+<p class="article">Article: <a href="{{paper_url}}">{{paper_title}}</a></p>
+<p class="video">Video: <a href="{{video_url}}">{{video_title}}</a></p>
+"""
+
+FRAGMENT_LANDMARKS = [
+    '<h1 id="heading">Owner heading</h1>',
+    '<p class="summary">Owner summary explaining the tree and hovering.</p>',
+    "body { margin: 0; }",
+    "<h2>References</h2>",
+    '<p class="article">Article:',
+    '<p class="video">Video:',
+]
+
+TOKEN_PATTERN = re.compile(
+    r"\{\{(?:paper_title|paper_url|video_title|video_url)\}\}"
+)
 
 
 def ok_result(node_id: int, value: complex = 2 + 0j) -> EvaluationResult:
@@ -50,6 +74,19 @@ def sample_tree() -> EMLTree:
     right = TreeNode(id=2, kind="eml", left=right_left, right=right_right)
     root = TreeNode(id=0, kind="eml", left=left, right=right)
     return EMLTree(root=root, node_count=5, source_text="1+(1+1)")
+
+
+def evaluated_tree() -> EMLTree:
+    """A sample tree whose nodes all carry a successful evaluation."""
+    tree = sample_tree()
+    tree.evaluations.update(
+        {node.id: ok_result(node.id) for node in iter_nodes(tree.root)}
+    )
+    return tree
+
+
+def render_with_fragment(config=None, fragment=SAMPLE_FRAGMENT):
+    return render_html(evaluated_tree(), config or CONFIG, top_fragment=fragment)
 
 
 def deep_tree(depth: int = 5) -> EMLTree:
@@ -142,29 +179,88 @@ def test_root_failure_replaces_displayed_value_with_failure_summary():
     assert "Value: <code>2</code>" not in html
 
 
-def test_fixed_header_and_conditional_video_anchor_are_rendered_in_order():
-    tree = sample_tree()
-    html = render_html(tree, CONFIG)
-    anchors = re.findall(r'<a href="([^"]+)">([^<]+)</a>', html)
-    assert anchors == [
-        (CONFIG["paper_url"], CONFIG["paper_title"]),
-        (CONFIG["video_url"], CONFIG["video_title"]),
-    ]
-    assert html.count("<a ") == 2
-    assert html.index("Odrzywołek") < html.index("<a ")
-    assert html.index("<a ") < html.index("This tree is")
-    assert html.index("This tree is") < html.index("Source expression:")
+def test_fragment_markup_appears_verbatim_in_order_above_result_and_tree():
+    html = render_with_fragment()
+
+    positions = [html.index(landmark) for landmark in FRAGMENT_LANDMARKS]
+    assert positions == sorted(positions)
+    assert positions[-1] < html.index("Source expression:")
     assert html.index("Source expression:") < html.index('<section class="tree">')
 
+    # Every non-token fragment byte survives unchanged, including single braces.
+    for chunk in TOKEN_PATTERN.split(SAMPLE_FRAGMENT):
+        assert chunk in html
+    assert "{{" not in html and "}}" not in html
 
-def test_omitted_video_config_renders_no_video_anchor_or_placeholder():
+
+def test_fixed_citation_and_em_wrapped_title_are_absent():
+    html = render_with_fragment()
+
+    assert "Odrzywołek" not in html
+    assert "arXiv:2603.21852v2" not in html
+    assert "This tree is" not in html
+    assert "<em>" not in html and "</em>" not in html
+    article_text = re.search(r'<a href="[^"]*">([^<]*)</a>', html).group(1)
+    assert article_text == CONFIG["paper_title"]
+    assert "<" not in article_text
+
+
+def test_article_and_video_anchors_use_only_config_values():
+    config = dict(CONFIG)
+    config["paper_title"] = "Odrzywołek, All elementary functions from a single binary operator"
+    html = render_with_fragment(config)
+
+    anchors = re.findall(r'<a href="([^"]*)">([^<]*)</a>', html)
+    assert anchors == [
+        (config["paper_url"], config["paper_title"]),
+        (config["video_url"], config["video_title"]),
+    ]
+    assert html.count("<a ") == 2
+
+
+def test_absent_video_values_substitute_empty_strings_without_omission():
     config = dict(CONFIG)
     config.pop("video_title")
     config.pop("video_url")
-    html = render_html(sample_tree(), config)
-    assert html.count("<a ") == 1
-    assert CONFIG["video_title"] not in html
-    assert 'href=""' not in html
+    html = render_with_fragment(config)
+
+    assert re.findall(r'<a href="([^"]*)">([^<]*)</a>', html) == [
+        (CONFIG["paper_url"], CONFIG["paper_title"]),
+        ("", ""),
+    ]
+    assert '<p class="video">Video: <a href="">' in html
+    assert "{{" not in html and "}}" not in html
+    for chunk in TOKEN_PATTERN.split(SAMPLE_FRAGMENT):
+        assert chunk in html
+
+
+def test_config_values_are_escaped_in_text_and_attribute_contexts():
+    config = {
+        "paper_title": 'A & B <script> "paper"',
+        "paper_url": 'https://example.org/?a=1&b="<x>"',
+        "video_title": "V & <video> 'quoted'",
+        "video_url": 'https://video.example/?q="<&>"',
+    }
+    html = render_with_fragment(config)
+
+    for value in config.values():
+        assert escape(value, quote=True) in html
+    assert "<script>" not in html
+    assert "<video>" not in html
+    assert 'href="https://example.org/?a=1&amp;b=&quot;&lt;x&gt;&quot;"' in html
+
+
+def test_render_is_deterministic_and_only_fragment_text_changes_header():
+    tree = evaluated_tree()
+    first = render_html(tree, CONFIG, top_fragment=SAMPLE_FRAGMENT)
+    second = render_html(tree, CONFIG, top_fragment=SAMPLE_FRAGMENT)
+    assert first == second
+
+    changed_fragment = SAMPLE_FRAGMENT.replace("Owner heading", "Changed heading")
+    changed = render_html(tree, CONFIG, top_fragment=changed_fragment)
+    assert "Changed heading" in changed
+    assert "Owner heading" not in changed
+    assert changed.replace("Changed heading", "Owner heading") == first
 
 
 def test_dynamic_strings_are_escaped_and_no_script_is_present():
@@ -177,7 +273,9 @@ def test_dynamic_strings_are_escaped_and_no_script_is_present():
         evaluations={0: failed_result(0, "undefined", message)},
     )
     summary = FailureSummary(entries=((0, "undefined", message),))
-    html = render_html(tree, config, failure_summary=summary)
+    html = render_html(
+        tree, config, failure_summary=summary, top_fragment=SAMPLE_FRAGMENT
+    )
     assert "&lt;b&gt;bad &amp; title" in html
     assert "&lt;x&gt; &amp; y" in html
     assert "&lt;b&gt;undefined&lt;/b&gt;" in html

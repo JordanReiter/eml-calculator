@@ -7,22 +7,16 @@ recomputation in the browser.
 
 from __future__ import annotations
 
+import re
 from html import escape
 
 from .constants import DETAILS_DEPTH_THRESHOLD, DETAILS_OPEN_LEVELS
 
 __all__ = ["render_html"]
 
-CITATION_HTML = (
-    "Odrzywołek, <em>All elementary functions from a single binary operator</em>, "
-    "arXiv:2603.21852v2"
-)
-
-EXPLANATION = (
-    "This tree is the source expression rewritten using only the eml operator "
-    "and the constant 1. Each eml node combines two child nodes. Hover a node "
-    "to see its precomputed value, or focus it with the keyboard."
-)
+# The fragment owns every page-top byte except these four link literals.
+FRAGMENT_TOKENS = ("paper_title", "paper_url", "video_title", "video_url")
+_FRAGMENT_TOKEN = re.compile(r"\{\{(" + "|".join(FRAGMENT_TOKENS) + r")\}\}")
 
 _STYLE = """
 body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
@@ -65,18 +59,18 @@ def _node_html(node, evaluations: dict, depth: int) -> str:
 
 
 def render_html(tree, config: dict[str, str | None], *,
-                failure_summary=None, source_value=None) -> str:
-    """Render the evaluated tree into one deterministic HTML document."""
-    paper_title = escape(config["paper_title"] or "")
-    paper_url = escape(config["paper_url"] or "", quote=True)
-    links = f'<a href="{paper_url}">{paper_title}</a>'
-    video_title = config.get("video_title")
-    video_url = config.get("video_url")
-    if video_title and video_url:
-        links += (
-            f' <a href="{escape(video_url, quote=True)}">'
-            f'{escape(video_title)}</a>'
-        )
+                failure_summary=None, source_value=None,
+                top_fragment: str = "") -> str:
+    """Render the evaluated tree into one deterministic HTML document.
+
+    Page-top content comes verbatim from ``top_fragment``; only the four link
+    tokens are substituted, with every value escaped before insertion.
+    """
+    values = {
+        name: escape(config.get(name) or "", quote=True)
+        for name in FRAGMENT_TOKENS
+    }
+    header = _FRAGMENT_TOKEN.sub(lambda match: values[match.group(1)], top_fragment)
 
     source = escape(tree.source_text, quote=True)
     root_result = tree.evaluations.get(tree.root.id)
@@ -122,9 +116,7 @@ def render_html(tree, config: dict[str, str | None], *,
 </head>
 <body>
 <header>
-<p>{CITATION_HTML}</p>
-<p>{links}</p>
-<p>{escape(EXPLANATION, quote=True)}</p>
+{header}
 </header>
 <section class="result">
 <p>Source expression: <code>{source}</code></p>

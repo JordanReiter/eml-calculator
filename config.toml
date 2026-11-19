@@ -1,6 +1,6 @@
 # Literal link titles and URLs only (FR-017, FR-018).
-paper_title = "the paper"
-paper_url = "https://arxiv.org/abs/2603.21852"
+paper_title = "Odrzywołek, A (2026). All elementary functions from a single operator. arXiv:2603.21852v2."
+paper_url = "https://arxiv.org/html/2603.21852v2"
 
-video_title = "the video"
+video_title = "A Two-Button Calculator That Does Everything - Numberphile"
 video_url = "https://www.youtube.com/watch?v=LxVW3b8jVdE"

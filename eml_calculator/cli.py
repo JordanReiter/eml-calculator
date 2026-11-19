@@ -8,7 +8,11 @@ import tomllib
 import webbrowser
 from pathlib import Path
 
-from .constants import DEFAULT_CONFIG_PATH, DEFAULT_HTML_PATH
+from .constants import (
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_HTML_PATH,
+    DEFAULT_TOP_FRAGMENT_PATH,
+)
 from .evaluate import (
     build_failure_summary,
     evaluate_source,
@@ -20,7 +24,7 @@ from .render_html import render_html
 from .render_text import render_text
 from .rewrite import rewrite
 
-__all__ = ["ConfigError", "load_page_config", "main"]
+__all__ = ["ConfigError", "load_page_config", "load_top_fragment", "main"]
 
 
 class ConfigError(Exception):
@@ -54,8 +58,6 @@ def load_page_config(path: str | Path | None = None) -> dict[str, str | None]:
     video_url = data.get("video_url")
     video_title = video_title if isinstance(video_title, str) and video_title.strip() else None
     video_url = video_url if isinstance(video_url, str) and video_url.strip() else None
-    if video_url is not None and video_title is None:
-        raise ConfigError(f"{config_path}: 'video_url' requires a 'video_title'")
 
     return {
         "paper_title": paper_title,
@@ -63,6 +65,19 @@ def load_page_config(path: str | Path | None = None) -> dict[str, str | None]:
         "video_title": video_title,
         "video_url": video_url,
     }
+
+
+def load_top_fragment(path: str | Path | None = None) -> str:
+    """Read the owner-authored page-top fragment at generation time.
+
+    The exact file text is returned; only the renderer substitutes tokens.
+    Missing, unreadable, or non-UTF-8 input is a user-facing generation error.
+    """
+    fragment_path = Path(path) if path is not None else Path(DEFAULT_TOP_FRAGMENT_PATH)
+    try:
+        return fragment_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise ConfigError(f"cannot read top fragment {fragment_path}: {exc}") from exc
 
 
 def _print_summary(tree, failure_summary) -> None:
@@ -89,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_page_config(DEFAULT_CONFIG_PATH)
+        top_fragment = load_top_fragment(DEFAULT_TOP_FRAGMENT_PATH)
     except ConfigError as exc:
         print(f"generation error: {exc}", file=sys.stderr)
         return 2
@@ -113,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             config,
             failure_summary=failure_summary,
             source_value=source_value,
+            top_fragment=top_fragment,
         ),
         encoding="utf-8",
     )

@@ -1,8 +1,8 @@
 # Data Model: EML Expression Translator
 
-**Feature**: [spec.md](./spec.md) | **Research**: [research.md](./research.md) | **Last updated**: 2026-11-17
+**Feature**: [spec.md](./spec.md) | **Research**: [research.md](./research.md) | **Last updated**: 2026-11-19
 
-This document describes the conceptual entities, fields, relationships, validation rules, and state transitions used by the feature. It is implementation-guiding, not code. It incorporates the 2026-11-17 clarifications on literal formats, CSS-only focus reveal, visible per-node failures with summary, ancestor `undefined` marking, and the exact complex-to-real display rule.
+This document describes the conceptual entities, fields, relationships, validation rules, and state transitions used by the feature. It is implementation-guiding, not code. It incorporates the 2026-11-17 clarifications on literal formats, CSS-only focus reveal, visible per-node failures with summary, ancestor `undefined` marking, and the exact complex-to-real display rule, plus the 2026-11-19 fragment-driven page header.
 
 ## Entities
 
@@ -41,6 +41,7 @@ This document describes the conceptual entities, fields, relationships, validati
 - **Validation rules**:
   - Structurally valid binary form: each internal node has exactly two children (`left`, `right`); each leaf is the constant `1`.
   - Represents *a* valid equivalent tree; no minimality requirement (FR-016).
+  - The imaginary unit `i` may appear as an internal construction in `constructions.py` for complex evaluation; it is not a supported user input (FR-002 lists only `pi` and `e`).
 - **Relationships**: Contains **Tree Nodes** and carries their **Evaluation Results** in a side mapping keyed by node id. Rendered to text and HTML.
 
 ### 4. Tree Node
@@ -107,29 +108,38 @@ This document describes the conceptual entities, fields, relationships, validati
 - **Fields** (from `config.toml`):
   - `paper_title` (string, required literal): link text for the paper anchor.
   - `paper_url` (string, required literal): expected `https://arxiv.org/abs/2603.21852`.
-  - `video_title` (string, required when `video_url` is present): link text for the video anchor.
-  - `video_url` (string, optional literal): configured video URL.
-- **Derived/display fields** (fixed in source):
-  - `citation_text`: `Odrzywołek, *All elementary functions from a single binary operator*, arXiv:2603.21852v2`.
-  - `explanation`: 2–3 fixed sentences explaining what the tree is and that hovering a node shows its value.
+  - `video_title` (string, optional literal): link text for the video anchor; substitutes as an empty string when absent.
+  - `video_url` (string, optional literal): configured video URL; substitutes as an empty string when absent.
+- **Page-top literal fields** (from the owner-authored root `top_fragment.html`, not from config or Python constants): H1, summary paragraph, "References" heading, and Article/Video label markup. The separate fixed citation paragraph is removed (see entity 9).
 - **Validation rules**:
-  - Titles and URLs are literals read from config, not constructed/fetched (FR-018).
-  - A configured `video_url` without a `video_title` is a generation error; with neither present, the video anchor is omitted.
+  - Titles and URLs are literals read from config, not constructed/fetched (FR-018); `paper_title` is a plain string and may contain the author name and article title, with no fixed sample literal required.
+  - Optional video values MAY be absent; they substitute as empty strings with no generation error and no renderer-side row omission. The owner-authored fragment controls the rendered rows.
   - Page contains no other anchors (FR-017, SC-007).
+
+### 9. Top Fragment (owner-authored HTML)
+- **Description**: Source-controlled root file that owns the literal page-top header content (FR-017, FR-018).
+- **Fields**:
+  - `path` (string): deterministic default `./top_fragment.html` at the repository root.
+  - `h1` / `summary` / `references_heading` / `article_label` / `video_label` (literal HTML markup): supplied by the project owner; inserted as supplied.
+- **Validation rules**:
+  - Must be present and readable at generation time; missing or unreadable is a user-facing generation error (FR-018, FR-021, exit `2`).
+  - Not generated per expression, not paraphrased by the implementation, not fetched at runtime; inserted as literal markup with no added styling of config link text (in particular no `<em>` around `paper_title`).
+  - Only article/video link text and hrefs are filled from `config.toml`; no other content is altered and no renderer-added anchors are introduced (FR-017, SC-007).
+- **Relationships**: Supplies the page-top H1, summary, "References" heading, and Article/Video label rows above the tree; `config.toml` supplies the four link literals used inside the Article/Video rows.
 
 ## Relationships Summary
 
 - Input Expression → (parse) → Source Expression Structure → (rewrite via `constructions.py`) → EML Tree.
 - EML Tree → contains many Tree Nodes (binary hierarchy) → each has an Evaluation Result.
 - Failed Evaluation Results → Failure Summary (every failing node, ancestors `undefined`) → text/HTML failure reporting.
-- Config (titles/URLs) + fixed citation/explanation + EML Tree + Evaluation Results + Failure Summary → deterministic text output and `out.html`.
+- Owner-authored `top_fragment.html` (H1/summary/References/labels) + config (link titles/URLs only) + EML Tree + Evaluation Results + Failure Summary → deterministic text output and `out.html`.
 - Validation Corpus → exercises parse/rewrite/evaluate/report pipeline in tests.
 
 ## Invariants
 
 - Output expression alphabet is only `eml` and `1` (FR-003).
 - Node count is total nodes and identical in text and HTML (FR-010, SC-004).
-- Same expression + same config => byte-identical `out.html` (Principle VII).
+- Same expression + same config + same `top_fragment.html` => byte-identical `out.html` (Principle VII).
 - Node values are precomputed; native `title` supports hover and CSS-only `:focus` reveals the same value with no JavaScript (FR-009).
 - A value is displayed as real exactly when `|imag| <= max(IMAG_ABS_FLOOR, ε × max(1, |real|))`, with both constants defined once (FR-014, Principle VI).
 - Every failing node is visibly marked with its reason; all failures appear in the summary; ancestors of failures are marked `undefined` (FR-012).

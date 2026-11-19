@@ -1,9 +1,9 @@
 # Contract: `config.toml`
 
-**Last updated**: 2026-11-17 (link titles added alongside URLs; video URL supplied)
+**Last updated**: 2026-11-19 (four keys unchanged; link text has no fixed sample literal; header content moved to `top_fragment.html`)
 
 ## Purpose
-Source-controlled, generation-time configuration for page link titles and URLs (FR-017, FR-018). Read by the CLI during output generation. Not fetched over the network and not constructed at runtime.
+Source-controlled, generation-time configuration for page link titles and URLs only (FR-017, FR-018). Literal page-top H1, summary, "References" heading, and Article/Video label markup are owned by the root `top_fragment.html`, not by this file. Read by the CLI during output generation. Not fetched over the network and not constructed at runtime.
 
 ## Location
 Repository root: `config.toml` (or the documented path resolved at generation time; literals remain in this file).
@@ -11,8 +11,9 @@ Repository root: `config.toml` (or the documented path resolved at generation ti
 ## Schema
 
 ```toml
-# Literal link titles and URLs only.
-paper_title = "the paper"
+# Literal link titles and URLs only. Values below are examples, not required literals.
+# paper_title is a plain string; it may include the author name and article title.
+paper_title = "Odrzywołek, All elementary functions from a single binary operator"
 paper_url = "https://arxiv.org/abs/2603.21852"
 
 video_title = "the video"
@@ -20,18 +21,18 @@ video_url = "https://www.youtube.com/watch?v=LxVW3b8jVdE"
 ```
 
 ### Keys
-- **`paper_title`** (string, required): Link text for the paper anchor.
-- **`paper_url`** (string, required): Literal URL for the paper anchor. Must be `https://arxiv.org/abs/2603.21852` for this feature as specified.
-- **`video_title`** (string, required when `video_url` is present): Link text for the video anchor.
-- **`video_url`** (string, optional): Literal URL for the video anchor. When missing or an empty value, the generated page MUST omit the video anchor entirely and show no placeholder/empty href. A `video_url` without a `video_title` is a generation error.
+- **`paper_title`** (string, required): Link text for the paper anchor. It is a plain string that may contain the author name and the article title; no fixed sample literal (e.g. `the paper`) is required, and the renderer adds no styling such as `<em>`.
+- **`paper_url`** (string, required): Literal URL for the paper anchor, supplied by the owner; no default or enforced value.
+- **`video_title`** (string, optional): Link text for the video anchor; substitutes as an empty string when absent.
+- **`video_url`** (string, optional): Literal URL for the video anchor. When missing or empty, an empty string is substituted into the fragment; no generation error is raised and the renderer performs no row omission. The owner-authored fragment determines the rendered result.
 
 ## Rendering rules (consumed by HTML generator)
-- Citation text is fixed in source: `Odrzywołek, *All elementary functions from a single binary operator*, arXiv:2603.21852v2`.
-- Anchor 1: text = `paper_title`, href = `paper_url`.
-- Anchor 2 (only if both video keys are configured): text = `video_title`, href = `video_url`.
-- Explanation is fixed in source (2–3 sentences); it is not configurable.
+- Page-top H1, summary paragraph, "References" heading, and Article/Video label markup come from the source-controlled root `top_fragment.html`, not from this file or Python constants. The separate fixed citation paragraph is removed.
+- Anchor 1 (Article row): text = `paper_title` as a plain string (may include author name and article title, rendered without added styling), href = `paper_url`.
+- Anchor 2 (Video row): text = substituted `video_title`, href = substituted `video_url` (empty strings when absent).
+- Summary/explanation text comes from `top_fragment.html`; it is not configurable here.
 - No other anchors appear on the page (FR-017, SC-007).
 
 ## Validation / error handling
-- Missing or unreadable config, invalid TOML, missing required `paper_title`/`paper_url`, or a video URL without a title is a user-facing generation error (boundary failure) with a clear message.
+- Missing or unreadable config, invalid TOML, or missing required `paper_title`/`paper_url` is a user-facing generation error (boundary failure) with a clear message. Absent optional video keys are not an error.
 - Values are treated as literals and inserted into HTML with proper escaping; they are never executed or fetched.

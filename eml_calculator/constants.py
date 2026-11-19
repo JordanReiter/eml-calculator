@@ -35,6 +35,7 @@ OVERFLOW_EXPONENTIAL_COUNT = 12
 
 # Deterministic output paths and rendering knobs.
 DEFAULT_CONFIG_PATH = "config.toml"
+DEFAULT_TOP_FRAGMENT_PATH = "./top_fragment.html"
 DEFAULT_HTML_PATH = "out.html"
 DETAILS_DEPTH_THRESHOLD = 3
 DETAILS_OPEN_LEVELS = 2

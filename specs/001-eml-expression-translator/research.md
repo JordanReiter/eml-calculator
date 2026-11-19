@@ -1,9 +1,9 @@
 # Phase 0 Research: EML Expression Translator
 
 **Feature**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md)  
-**Date**: 2026-11-16 | **Last updated**: 2026-11-17
+**Date**: 2026-11-16 | **Last updated**: 2026-11-19
 
-All technical choices below are resolved from the user input, the feature spec (including 2026-11-17 clarifications), and the project constitution so that implementation can proceed without `NEEDS CLARIFICATION` markers.
+All technical choices below are resolved from the user input, the feature spec (including 2026-11-17 clarifications), and the project constitution, including the 2026-11-19 top-fragment clarification, so that implementation can proceed without `NEEDS CLARIFICATION` markers.
 
 ## Decisions
 
@@ -42,13 +42,13 @@ All technical choices below are resolved from the user input, the feature spec (
 - **Alternatives considered**: Raising exceptions to abort — rejected for supported error cases (must not crash; must attribute). Returning raw float `nan/inf` — rejected. Marking only the deepest node and leaving ancestors blank — rejected; clarified rule requires ancestors `undefined`.
 
 ### 7. Deterministic HTML output and page content (FR-007, FR-009, FR-010, FR-017–FR-019, Principle VII)
-- **Decision**: Generate a single self-contained `out.html` (overwritten each run). Fixed citation and explanation plus config-sourced anchor titles and URLs (FR-017/FR-018) appear above the tree in order: citation text; paper anchor using `paper_title`/`paper_url`; video anchor using `video_title`/`video_url` if both are present; 2–3 sentence explanation stating what the tree is and that hovering a node shows its value. No other anchors. Below the citation block and above the tree show the source expression (exactly as supplied) and its precomputed evaluated value, or the failure summary in place of the value when it cannot be evaluated (FR-019). Total node count displayed and consistent with text/rendered forms. Failure reporting includes visible per-node reason markers and a summary listing every failing node and reason, with ancestors marked `undefined`. Determinism via stable ordering/indentation/escaping/serialization (no timestamps, no random IDs, normalized whitespace/line endings as chosen once).
+- **Decision**: Generate a single self-contained `out.html` (overwritten each run). Page-top H1, summary paragraph, "References" heading, and Article/Video label markup come from the source-controlled root `top_fragment.html` read at generation time (FR-017/FR-018); only link titles and URLs come from `config.toml`, and the separate fixed citation paragraph is removed. Above the tree the order is: H1; summary; "References" heading; Article row using config `paper_title`/`paper_url`; Video row using config `video_title`/`video_url` (empty strings when absent). Then, still above the tree, show the source expression (exactly as supplied) and its precomputed evaluated value, or the failure summary in place of the value when it cannot be evaluated (FR-019). No other anchors. Total node count displayed and consistent with text/rendered forms. Failure reporting includes visible per-node reason markers and a summary listing every failing node and reason, with ancestors marked `undefined`. Determinism via stable ordering/indentation/escaping/serialization (no timestamps, no random IDs, normalized whitespace/line endings as chosen once).
 - **Rationale**: Meets all page/attribution/determinism requirements and makes inspection possible without JS; the failure summary is required for node-attributed diagnosis (FR-012, SC-006).
 - **Alternatives considered**: Multiple files or external CSS/JS/assets — rejected (must be one self-contained file, no JS/network).
 
 ### 8. Configuration (FR-018)
-- **Decision**: `config.toml` read at generation time (not runtime-fetched, not constructed). Schema contains literals: `paper_title`, `paper_url` (expected `https://arxiv.org/abs/2603.21852`), `video_title`, and optional `video_url`. If either video key is missing/empty, omit the video anchor entirely with no placeholder. Titles and URLs are written as escaped literals into HTML.
-- **Rationale**: Spec requires literals in source-controlled config and omission-not-placeholder behavior.
+- **Decision**: `config.toml` read at generation time (not runtime-fetched, not constructed). Schema keeps four unchanged keys with literals: `paper_title` (plain string, may include author name and article title; no fixed sample literal), `paper_url` (expected `https://arxiv.org/abs/2603.21852`), `video_title`, and optional `video_url`. Absent video keys substitute as empty strings; the renderer performs no row omission or error handling. Titles and URLs are written as escaped literals into HTML; literal page-top content comes from `top_fragment.html`.
+- **Rationale**: Spec requires literals in source-controlled config and literal substitution with no renderer-side omission.
 - **Alternatives considered**: CLI flags for URLs or runtime discovery — rejected.
 
 ### 9. Validation corpus (SC-001–SC-004, Key Entities)
@@ -60,6 +60,11 @@ All technical choices below are resolved from the user input, the feature spec (
 - **Decision**: Invocation like `python -m eml_calculator "1+1"` (and/or console script) parses args, generates outputs, writes `out.html` in the working directory (or a deterministic, documented location per contract), prints the indented text tree and summary (expression, value, node count, failures if any) to stdout, prints user-facing errors to stderr with non-zero exit on input/unsupported errors, and attempts to open `out.html` via `webbrowser.open`. Opening is a boundary side effect; core generation remains testable without it.
 - **Rationale**: Matches stated UX (CLI arg, emit/open out.html) while preserving explicit boundaries and testability.
 - **Alternatives considered**: Serving over HTTP — rejected (no server).
+
+### 11. Owner-authored top fragment as generation-time input (FR-017, FR-018, FR-021)
+- **Decision**: A source-controlled root `top_fragment.html` (deterministic default `./top_fragment.html`) supplies the page-top H1, summary paragraph, "References" heading, and Article/Video label markup. It is read at generation time and inserted as supplied; only article/video link text and hrefs come from `config.toml`. A missing or unreadable fragment is a user-facing generation error (exit `2`). No runtime fetch, no paraphrase, no JavaScript.
+- **Rationale**: The 2026-11-19 clarification makes the owner the author of the header prose and removes the fixed citation paragraph; keeping it in one source-controlled HTML file preserves determinism (Principle VII) and the pure-renderer boundary (Principle II).
+- **Alternatives considered**: Python string constants (rejected — presentation in code), new config keys for header text (rejected — would grow the four-key link contract and put markup in TOML), fixed citation/explanation in source (superseded by the clarification).
 
 ## Resolved Clarifications Summary
 
@@ -73,6 +78,7 @@ All technical choices below are resolved from the user input, the feature spec (
 | Node value inspection | Native `title` for hover + CSS-only `:focus` reveal of the precomputed value; no JS |
 | Failure taxonomy | `overflow`, `undefined` (zero right child) at specific node; every failing node visibly marked, all failures summarized, ancestors marked `undefined` |
 | Complex display | Real when `|imag| <= max(IMAG_ABS_FLOOR, ε × max(1, |real|))`; otherwise complex form |
-| Config/links | `config.toml` literals for both titles and URLs; omit video anchor if unset; fixed citation/explanation |
+| Config/links | `config.toml` keeps four keys for link titles/URLs; omit video row if unset; no fixed citation paragraph |
+| Page-top content | Owner-authored root `top_fragment.html`: H1, summary, "References", Article/Video labels; only link titles/URLs from config |
 | Corpus | ~30 fixed expressions incl. required failures; data-driven tests |
 | Translation scope | Any valid equivalent tree; no minimization |

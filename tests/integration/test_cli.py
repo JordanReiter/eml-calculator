@@ -8,8 +8,33 @@ import pytest
 
 from eml_calculator import cli
 
+FRAGMENT = """<h1 id="heading">Owner heading</h1>
+<p class="summary">Owner summary explaining the tree and hovering.</p>
+<style>body { margin: 0; }</style>
+<h2>References</h2>
+<p class="article">Article: <a href="{{paper_url}}">{{paper_title}}</a></p>
+<p class="video">Video: <a href="{{video_url}}">{{video_title}}</a></p>
+"""
 
-def configure(tmp_path, monkeypatch, *, video: bool = True, paper_title: str = "the paper"):
+FRAGMENT_LANDMARKS = [
+    '<h1 id="heading">Owner heading</h1>',
+    '<p class="summary">Owner summary explaining the tree and hovering.</p>',
+    "body { margin: 0; }",
+    "<h2>References</h2>",
+    '<p class="article">Article:',
+    '<p class="video">Video:',
+]
+
+
+def configure(
+    tmp_path,
+    monkeypatch,
+    *,
+    video: bool = True,
+    paper_title: str = "the paper",
+    fragment: str = FRAGMENT,
+    with_fragment: bool = True,
+):
     config = tmp_path / "config.toml"
     config.write_text(
         f'paper_title = "{paper_title}"\n'
@@ -22,11 +47,19 @@ def configure(tmp_path, monkeypatch, *, video: bool = True, paper_title: str = "
         ),
         encoding="utf-8",
     )
+    fragment_path = tmp_path / "top_fragment.html"
+    if with_fragment:
+        fragment_path.write_text(fragment, encoding="utf-8")
+    elif fragment_path.exists():
+        fragment_path.unlink()
     output = tmp_path / "out.html"
     if output.exists():
         output.unlink()
     monkeypatch.setattr(cli, "DEFAULT_HTML_PATH", str(output), raising=False)
     monkeypatch.setattr(cli, "DEFAULT_CONFIG_PATH", str(config), raising=False)
+    monkeypatch.setattr(
+        cli, "DEFAULT_TOP_FRAGMENT_PATH", str(fragment_path), raising=False
+    )
     monkeypatch.setattr(cli.webbrowser, "open", lambda url: True)
     return output
 
@@ -82,40 +115,45 @@ def test_text_nodes_html_nodes_and_node_count_match(tmp_path, monkeypatch, capsy
     assert len(text_labels) == node_count == len(html_labels)
 
 
-def test_configured_links_and_source_value_appear_above_tree(tmp_path, monkeypatch, capsys):
+def test_fragment_header_links_source_and_value_appear_above_tree(tmp_path, monkeypatch, capsys):
     output = configure(tmp_path, monkeypatch, video=True)
     code = cli.main(["1+1"])
     captured = capsys.readouterr()
     html = output.read_text(encoding="utf-8")
 
     assert code == 0
-    anchors = re.findall(r'<a href="([^"]+)">([^<]+)</a>', html)
+    anchors = re.findall(r'<a href="([^"]*)">([^<]*)</a>', html)
     assert anchors == [
         ("https://arxiv.org/abs/2603.21852", "the paper"),
         ("https://www.youtube.com/watch?v=LxVW3b8jVdE", "the video"),
     ]
     assert html.count("<a ") == 2
-    assert html.index("Odrzywołek") < html.index("<a ")
-    assert html.index("<a ") < html.index("This tree is")
-    assert html.index("This tree is") < html.index("Source expression:")
-    assert html.index("Source expression:") < html.index('<section class="tree">')
+    positions = [html.index(landmark) for landmark in FRAGMENT_LANDMARKS]
+    assert positions == sorted(positions)
+    assert positions[-1] < html.index("Source expression:")
+    assert html.index("Source expression:") < html.index("Value:")
+    assert html.index("Value:") < html.index('<section class="tree">')
     assert "Source expression: <code>1+1</code>" in html
     assert "Value: <code>2</code>" in html
     assert "Source expression: 1+1" in captured.out
     assert "Value: 2" in captured.out
+    assert "Odrzywołek" not in html
 
 
-def test_omitted_video_config_renders_only_paper_anchor(tmp_path, monkeypatch, capsys):
+def test_omitted_video_config_substitutes_empty_strings_without_omission(tmp_path, monkeypatch):
     output = configure(tmp_path, monkeypatch, video=False)
     code = cli.main(["1+1"])
-    capsys.readouterr()
     html = output.read_text(encoding="utf-8")
+
     assert code == 0
-    assert re.findall(r'<a href="([^"]+)">([^<]+)</a>', html) == [
-        ("https://arxiv.org/abs/2603.21852", "the paper")
+    assert re.findall(r'<a href="([^"]*)">([^<]*)</a>', html) == [
+        ("https://arxiv.org/abs/2603.21852", "the paper"),
+        ("", ""),
     ]
-    assert "the video" not in html
-    assert "placeholder" not in html.lower()
+    assert '<p class="video">Video: <a href="">' in html
+    assert "{{" not in html and "}}" not in html
+    for landmark in FRAGMENT_LANDMARKS:
+        assert landmark in html
 
 
 def test_repeated_runs_are_byte_identical(tmp_path, monkeypatch, capsys):
@@ -177,3 +215,80 @@ def test_node_failure_exits_one_and_writes_failure_artifact(tmp_path, monkeypatc
     assert "node 0: undefined" in html
     assert "nan" not in html.lower()
     assert "inf" not in html.lower()
+
+
+@pytest.mark.parametrize("video", [True, False])
+def test_cli_fragment_header_and_anchors_with_and_without_video(
+    tmp_path, monkeypatch, video
+):
+    output = configure(tmp_path, monkeypatch, video=video)
+    code = cli.main(["1+1"])
+    html = output.read_text(encoding="utf-8")
+
+    assert code == 0
+    positions = [html.index(landmark) for landmark in FRAGMENT_LANDMARKS]
+    assert positions == sorted(positions)
+    assert positions[-1] < html.index("Source expression:")
+    assert html.index("Source expression:") < html.index('<section class="tree">')
+    # The fragment owns both rows; omitted video config never removes one.
+    assert html.count("<a ") == 2
+    assert "{{" not in html and "}}" not in html
+    expected_anchors = [("https://arxiv.org/abs/2603.21852", "the paper")]
+    if video:
+        expected_anchors.append(
+            ("https://www.youtube.com/watch?v=LxVW3b8jVdE", "the video")
+        )
+    else:
+        expected_anchors.append(("", ""))
+    assert re.findall(r'<a href="([^"]*)">([^<]*)</a>', html) == expected_anchors
+
+
+def test_missing_fragment_exits_two_with_generation_error_and_no_artifact(
+    tmp_path, monkeypatch, capsys
+):
+    output = configure(tmp_path, monkeypatch, with_fragment=False)
+    fragment_path = tmp_path / "top_fragment.html"
+
+    code = cli.main(["1+1"])
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert "generation error" in captured.err.lower()
+    assert str(fragment_path) in captured.err
+    assert not output.exists()
+
+
+def test_unreadable_fragment_exits_two_with_generation_error_and_no_artifact(
+    tmp_path, monkeypatch, capsys
+):
+    output = configure(tmp_path, monkeypatch)
+    fragment_path = tmp_path / "top_fragment.html"
+    original_load = cli.load_top_fragment
+
+    def failing_load(path=None):
+        raise cli.ConfigError(f"cannot read fragment {fragment_path}: permission denied")
+
+    monkeypatch.setattr(cli, "load_top_fragment", failing_load)
+    try:
+        code = cli.main(["1+1"])
+    finally:
+        monkeypatch.setattr(cli, "load_top_fragment", original_load)
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert "generation error" in captured.err.lower()
+    assert str(fragment_path) in captured.err
+    assert not output.exists()
+
+
+def test_fragment_output_is_byte_identical_across_runs(tmp_path, monkeypatch, capsys):
+    fragment = FRAGMENT.replace("<h1", '<h1 data-owner="yes"')
+    output = configure(tmp_path, monkeypatch, fragment=fragment)
+
+    assert cli.main(["1+1"]) == 0
+    capsys.readouterr()
+    first = output.read_bytes()
+    assert cli.main(["1+1"]) == 0
+    capsys.readouterr()
+
+    assert output.read_bytes() == first

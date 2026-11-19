@@ -4,6 +4,22 @@ Choices that are expensive to reverse, and the reasons. Newest first. Anything h
 
 ---
 
+## 2026-11-19 — Disposition of cross-artifact analysis findings after Phase 8
+
+**Analysis** (`/speckit.analyze`, read-only): no CRITICAL or HIGH findings; all 21 FRs and 9 SCs have task coverage; constitution Principles II, V, VI, and VII pass.
+
+- research.md's resolved-clarifications summary still says "omit video row if unset". It is a stale one-line summary; the detailed decision in the same file, FR-017/FR-018, and contracts/html-output.md all require literal substitution with no renderer-side omission. Disposition: superseded by the 2026-11-19 fragment decision below; no implementation change needed.
+- contracts/cli.md's I/O boundary list names the config read but not the top-fragment read. FR-018/FR-021 and contracts/html-output.md already define that boundary and its error path, so the CLI contract line is an incomplete inventory, not a conflicting requirement. Disposition: covered by the fragment decision below.
+- The 2026-11-17 decision "Link titles live in config.toml" says the citation and explanation stay fixed in source. The 2026-11-19 fragment decision below explicitly supersedes that sentence; retained as history, not an active requirement.
+
+## 2026-11-19 — The owner-authored header lives in an HTML fragment, not Python constants or config
+
+**Decision.** The page-top H1, summary paragraph, "References" heading, and Article/Video label markup are supplied by the project owner in a source-controlled root file `top_fragment.html`, read at generation time (deterministic default `./top_fragment.html`). `config.toml` keeps exactly four unchanged keys — `paper_title`, `paper_url`, `video_title`, `video_url` — used only for link text and hrefs; `paper_title` is a plain string that may contain the author name and the article title. The separate fixed citation paragraph is removed: literal header content comes from the fragment, and only link titles/URLs come from config.
+
+**Why.** The header is owner-authored prose and layout, not a formula (Principle V) or a shared number (Principle VI). Putting it in Python constants would entangle presentation with renderer code and turn a wording change into a code change; putting it in `config.toml` would blur that file's contract into holding markup, tempt styling into TOML strings, and force the four-key link schema to grow. An HTML fragment keeps the owner's markup verbatim and source-controlled, keeps config limited to link literals, and preserves determinism because the fragment is read once at generation time and never fetched or paraphrased at runtime. The renderer still computes nothing (Principle VII): Python constants remain the single source for numbers, and the fragment is the single source for page-top prose.
+
+Alternatives considered: a hard-coded citation/explanation in the renderer (superseded by the 2026-11-19 clarification), new config keys for header text (rejected — mixes markup into the four-key link contract), and Python string constants (rejected — presentation belongs in the owner's source-controlled HTML, not implementation code).
+
 ## 2026-11-17 — Extended infinities are evaluated with phase, not treated as scope failures
 
 **Decision.** The single evaluator carries finite complex values plus internal
@@ -122,6 +138,8 @@ What is preserved from the stricter instinct: a run never exits `0` while report
 **Why.** Hover values are computed in Python at generation time, so no value crosses into a scripting layer. `<details>` gives collapsibility with zero JavaScript, which keeps principle VII intact while making a thousand-node tree navigable.
 
 Pruning was considered and rejected: FR-020 and AC-4 require the text and rendered forms to contain the same nodes, and an elided subtree fails that silently, in the direction the tests cannot see.
+
+Auto-opening out.html via webbrowser.open after generation is a CLI implementation convenience, not a spec requirement. It does not affect the rendered page contract (no input, form, navigation, or JavaScript).
 
 ## 2026-11-16 — Values computed once, children before parents; errors are data
 
